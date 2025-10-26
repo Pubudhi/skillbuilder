@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SkillBridge - ECR repos
+
+Resources:
+  EcrBooking:   { Type: AWS::ECR::Repository, Properties: { RepositoryName: booking-service } }
+  EcrProfile:   { Type: AWS::ECR::Repository, Properties: { RepositoryName: profile-service } }
+  EcrMessaging: { Type: AWS::ECR::Repository, Properties: { RepositoryName: messaging-service } }
+  EcrPayment:   { Type: AWS::ECR::Repository, Properties: { RepositoryName: payment-service } }
+  EcrCodeRev:   { Type: AWS::ECR::Repository, Properties: { RepositoryName: code-review-service } }
+
+Outputs:
+  BookingRepoUri:   { Value: !GetAtt EcrBooking.RepositoryUri }
+  ProfileRepoUri:   { Value: !GetAtt EcrProfile.RepositoryUri }
+  MessagingRepoUri: { Value: !GetAtt EcrMessaging.RepositoryUri }
+  PaymentRepoUri:   { Value: !GetAtt EcrPayment.RepositoryUri }
+  CodeRevRepoUri:   { Value: !GetAtt EcrCodeRev.RepositoryUri }

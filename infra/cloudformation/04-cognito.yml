@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SkillBridge - Cognito User/Identity Pools
+
+Parameters:
+  UserPoolName: { Type: String, Default: skillbridge-users }
+  DomainPrefix:
+    Type: String
+    Description: Unique domain prefix for Hosted UI (e.g. skillbridge-demo-xyz)
+  CallbackUrl:
+    Type: String
+    Default: http://localhost:3000/
+  LogoutUrl:
+    Type: String
+    Default: http://localhost:3000/
+
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Ref UserPoolName
+      AutoVerifiedAttributes: [ email ]
+      UsernameAttributes: [ email ]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireUppercase: false
+          RequireSymbols: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      AllowedOAuthFlows: [ code ]
+      AllowedOAuthScopes: [ email, openid, profile ]
+      AllowedOAuthFlowsUserPoolClient: true
+      CallbackURLs: [ !Ref CallbackUrl ]
+      LogoutURLs: [ !Ref LogoutUrl ]
+      SupportedIdentityProviders: [ COGNITO ]
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref DomainPrefix
+      UserPoolId: !Ref UserPool
+
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: skillbridge-identities
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !GetAtt UserPool.ProviderName
+
+Outputs:
+  UserPoolId: { Value: !Ref UserPool, Export: { Name: sb:CognitoUserPoolId } }
+  UserPoolClientId: { Value: !Ref UserPoolClient, Export: { Name: sb:CognitoClientId } }
+  UserPoolIssuer:
+    Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+    Export: { Name: sb:CognitoIssuer }

@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SkillBridge - EKS cluster + nodegroups
+
+Parameters:
+  ClusterName: { Type: String, Default: skillbridge-eks }
+  VpcId:       { Type: String, Default: !ImportValue sb:VpcId }
+  PrivateSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: !Split [ ",", !ImportValue sb:PrivateSubnets ]
+
+Resources:
+  EksClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: eks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+  EksCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      RoleArn: !GetAtt EksClusterRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds: !Ref PrivateSubnets
+        EndpointPublicAccess: true
+        EndpointPrivateAccess: false
+      Version: "1.29"
+
+  NodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess
+
+  Nodegroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !Ref ClusterName
+      NodegroupName: ng-app
+      NodeRole: !GetAtt NodeRole.Arn
+      Subnets: !Ref PrivateSubnets
+      ScalingConfig: { MinSize: 2, MaxSize: 6, DesiredSize: 2 }
+      AmiType: AL2_x86_64
+      InstanceTypes: [ t3.large ]
+
+Outputs:
+  ClusterNameOut: { Value: !Ref ClusterName, Export: { Name: sb:EksName } }

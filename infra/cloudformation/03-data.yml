@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SkillBridge - Data: Aurora PG Serverless v2, DynamoDB, S3
+
+Parameters:
+  PrivateSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: !Split [ ",", !ImportValue sb:PrivateSubnets ]
+  VpcId:
+    Type: String
+    Default: !ImportValue sb:VpcId
+  DbSecretName:
+    Type: String
+    Default: skillbridge/aurora/credentials # JSON: {"username":"app_user","password":"StrongPassw0rd!"}
+  DbName:
+    Type: String
+    Default: skillbridge
+
+Resources:
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: SkillBridge DB subnets
+      SubnetIds: !Ref PrivateSubnets
+
+  SecurityGroupDB:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Aurora access
+      VpcId: !Ref VpcId
+
+  AuroraCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-postgresql
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds: [ !Ref SecurityGroupDB ]
+      DatabaseName: !Ref DbName
+      ManageMasterUserPassword: true
+      MasterUserSecret:
+        KmsKeyId: !Ref "AWS::NoValue"
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0.5
+        MaxCapacity: 4
+      StorageEncrypted: true
+      BackupRetentionPeriod: 7
+
+  AuroraInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref AuroraCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+
+  UploadsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "skillbridge-uploads-${AWS::AccountId}"
+      VersioningConfiguration: { Status: Enabled }
+      LifecycleConfiguration:
+        Rules:
+          - Id: GlacierAfter60Days
+            Status: Enabled
+            Transitions: [{ StorageClass: GLACIER, TransitionInDays: 60 }]
+    DeletionPolicy: Retain
+
+  ProfilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Profiles
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+        - { AttributeName: domain, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: domain-gsi
+          KeySchema: [{ AttributeName: domain, KeyType: HASH }]
+          Projection: { ProjectionType: ALL }
+
+  AvailabilitiesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Availabilities
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: mentorId, AttributeType: S }
+        - { AttributeName: slotTs, AttributeType: S }
+      KeySchema:
+        - { AttributeName: mentorId, KeyType: HASH }
+        - { AttributeName: slotTs, KeyType: RANGE }
+
+  MessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Messages
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: threadId, AttributeType: S }
+        - { AttributeName: ts, AttributeType: S }
+      KeySchema:
+        - { AttributeName: threadId, KeyType: HASH }
+        - { AttributeName: ts, KeyType: RANGE }
+
+Outputs:
+  AuroraClusterArn: { Value: !Ref AuroraCluster }
+  UploadsBucketName: { Value: !Ref UploadsBucket, Export: { Name: sb:UploadsBucket } }

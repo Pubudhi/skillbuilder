@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SkillBridge - API Gateway HTTP API with JWT authorizer + VPC Link
+
+Parameters:
+  NlbArn:
+    Type: String
+    Description: ARN of the internal NLB fronting the EKS Ingress/Gateway (from k8s/AWS LB Controller)
+  CognitoIssuer:
+    Type: String
+    Default: !ImportValue sb:CognitoIssuer
+  CognitoAudience:
+    Type: String
+    Default: !ImportValue sb:CognitoClientId
+
+Resources:
+  VpcLink:
+    Type: AWS::ApiGatewayV2::VpcLink
+    Properties:
+      Name: sb-vpc-link
+      SubnetIds: !Split [ ",", !ImportValue sb:PrivateSubnets ]
+      SecurityGroupIds: []
+      Tags: { Project: skillbridge, Layer: apigw }
+
+  IntegrationNlb:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: HTTP_PROXY
+      IntegrationUri: !Ref NlbArn
+      PayloadFormatVersion: "1.0"
+      ConnectionType: VPC_LINK
+      ConnectionId: !Ref VpcLink
+      IntegrationMethod: ANY
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: skillbridge-http
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowMethods: [ GET, POST, PUT, DELETE, OPTIONS ]
+        AllowOrigins: [ "*" ]
+        AllowHeaders: [ "*" ]
+
+  JwtAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref HttpApi
+      AuthorizerType: JWT
+      IdentitySource: [ "$request.header.Authorization" ]
+      Name: cognito-jwt
+      JwtConfiguration:
+        Audience: [ !Ref CognitoAudience ]
+        Issuer:  !Ref CognitoIssuer
+
+  # Example routes → forward to NLB; the actual path mapping is handled in EKS ingress
+  RouteBookings:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /bookings/{proxy+}"
+      Target: !Sub "integrations/${IntegrationNlb}"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref JwtAuthorizer
+
+  RouteProfiles:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /profiles/{proxy+}"
+      Target: !Sub "integrations/${IntegrationNlb}"
+      AuthorizationType: NONE
+
+  RouteMessaging:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /messages/{proxy+}"
+      Target: !Sub "integrations/${IntegrationNlb}"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref JwtAuthorizer
+
+  RoutePayment:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /pay/{proxy+}"
+      Target: !Sub "integrations/${IntegrationNlb}"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref JwtAuthorizer
+
+  RouteCodeReview:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /reviews/{proxy+}"
+      Target: !Sub "integrations/${IntegrationNlb}"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref JwtAuthorizer
+
+  StageProd:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: prod
+      AutoDeploy: true
+
+Outputs:
+  HttpApiEndpoint: { Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod" }
