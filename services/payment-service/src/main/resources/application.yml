@@ -1,0 +1,15 @@
+server:
+  port: 8083
+stripe:
+  secret: ${STRIPE_SECRET:sk_test_xxx}
+  webhook:
+    secret: ${STRIPE_WEBHOOK_SECRET:whsec_xxx}
+app:
+  url:
+    success: ${SUCCESS_URL:http://localhost:3000/booking/success}
+    cancel:  ${CANCEL_URL:http://localhost:3000/booking/cancel}
+spring:
+  application:
+    name: payment-service
+  jpa:
+    hibernate.ddl-auto: update

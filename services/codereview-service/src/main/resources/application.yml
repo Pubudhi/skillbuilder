@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: codereview-service
+
+server.port: 8084
+
+app:
+  s3:
+    bucket: ${UPLOADS_BUCKET:skillbridge-uploads}
+  aws:
+    region: ${AWS_REGION:ap-south-1}
